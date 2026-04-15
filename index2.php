@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Cube Game</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #fafafa;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        #board {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            cursor: none;
+            background-image:
+                linear-gradient(#e0e0e0 1px, transparent 1px),
+                linear-gradient(90deg, #e0e0e0 1px, transparent 1px);
+            background-size: 25px 25px;
+        }
+
+        .cube {
+            position: absolute;
+            width: 36px;
+            height: 36px;
+            transform: translate(-50%, -50%);
+            border: 3px solid #111;
+            border-radius: 6px;
+        }
+
+        #player {
+            background-color: #fff;
+            z-index: 10;
+        }
+
+        #enemy {
+            background-color: #111;
+            z-index: 5;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: #fff;
+            padding: 40px;
+            border: 3px solid #111;
+            border-radius: 12px;
+            z-index: 20;
+            cursor: auto;
+        }
+
+        h1 {
+            margin: 0 0 15px 0;
+            font-size: 28px;
+            color: #111;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #score {
+            margin: 0 0 25px 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-family: 'Outfit', sans-serif;
+            border: 3px solid #111;
+            background: #fff;
+            color: #111;
+            cursor: pointer;
+            font-weight: 700;
+            border-radius: 6px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #111;
+            color: #fff;
+        }
+
+        #liveTimer {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            font-weight: 700;
+            color: #111;
+            z-index: 15;
+            background: #fff;
+            padding: 5px 15px;
+            border: 3px solid #111;
+            border-radius: 6px;
+        }
+
+        #powerup {
+            background-color: #fff;
+            border: 3px dashed #111;
+            border-radius: 50%;
+            z-index: 8;
+        }
+
+        .terrain {
+            background-color: #555;
+            border-radius: 0;
+            z-index: 6;
+            width: 50px;
+            height: 50px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="board">
+        <div id="liveTimer" class="hidden">0.0s</div>
+        <div id="player" class="cube hidden"></div>
+        <div id="enemy" class="cube hidden"></div>
+        <div id="powerup" class="cube hidden"></div>
+
+        <div id="overlay">
+            <h1 id="title">Cube Run</h1>
+            <p id="score"></p>
+            <button id="startBtn">Start</button>
+        </div>
+    </div>
+
+    <script>
+        const player = document.getElementById('player');
+        const enemy = document.getElementById('enemy');
+        const powerup = document.getElementById('powerup');
+        const liveTimer = document.getElementById('liveTimer');
+        const overlay = document.getElementById('overlay');
+        const startBtn = document.getElementById('startBtn');
+        const title = document.getElementById('title');
+        const score = document.getElementById('score');
+
+        let active = false;
+        let mx = window.innerWidth / 2;
+        let my = window.innerHeight / 2;
+        let px = mx;
+        let py = my;
+        let ex = 0;
+        let ey = 0;
+        let reqId;
+        let tStart = 0;
+
+        let pwrActive = false;
+        let pwrX = 0;
+        let pwrY = 0;
+        let nextPwr = 5;
+        let pwrBoost = 1;
+
+        let terrains = [];
+        let gridSet = new Set();
+        let nextTerrain = 3;
+
+        let slideManeuver = 0;
+        let stuckDirX = 0;
+        let stuckDirY = 0;
+
+        document.addEventListener('mousemove', e => {
+            mx = e.clientX;
+            my = e.clientY;
+        });
+
+        startBtn.addEventListener('click', runGame);
+
+        function validatePos(cx, cy) {
+            for (let t of terrains) {
+                if (Math.abs(cx - t.x) < 46 && Math.abs(cy - t.y) < 46) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function runGame() {
+            active = true;
+            overlay.classList.add('hidden');
+            player.classList.remove('hidden');
+            enemy.classList.remove('hidden');
+            powerup.classList.add('hidden');
+            liveTimer.classList.remove('hidden');
+
+            px = mx;
+            py = my;
+
+            let a = Math.random() * Math.PI * 2;
+            let d = Math.max(window.innerWidth, window.innerHeight);
+            ex = px + Math.cos(a) * d;
+            ey = py + Math.sin(a) * d;
+
+            pwrActive = false;
+            nextPwr = 5;
+            pwrBoost = 1;
+
+            for (let t of terrains) {
+                if (t.el && t.el.parentNode) {
+                    t.el.parentNode.removeChild(t.el);
+                }
+            }
+            terrains = [];
+            gridSet.clear();
+            nextTerrain = 3;
+
+            tStart = Date.now();
+            loop();
+        }
+
+        function loop() {
+            if (!active) return;
+
+            let timeAlive = (Date.now() - tStart) / 1000;
+            liveTimer.textContent = timeAlive.toFixed(1) + 's';
+
+            let pVelX = (mx - px) * (0.12 * pwrBoost);
+            let pVelY = (my - py) * (0.12 * pwrBoost);
+
+            if (validatePos(px + pVelX, py)) px += pVelX;
+            if (validatePos(px, py + pVelY)) py += pVelY;
+
+            let dx = px - ex;
+            let dy = py - ey;
+
+            if (timeAlive > 5) {
+                let predictionFactor = Math.min(0.5 + (timeAlive * 0.05), 1.7);
+                let aheadX = px + (mx - px) * predictionFactor;
+                let aheadY = py + (my - py) * predictionFactor;
+                dx = aheadX - ex;
+                dy = aheadY - ey;
+            }
+
+            let dist = Math.hypot(dx, dy);
+            let spd = 3.5 + (timeAlive * 0.25);
+
+            if (dist > 0) {
+                let eVelX = (dx / dist) * spd;
+                let eVelY = (dy / dist) * spd;
+                let mX = false, mY = false;
+
+                if (slideManeuver > 0) {
+                    slideManeuver--;
+                    if (stuckDirX !== 0) eVelX = stuckDirX * spd;
+                    if (stuckDirY !== 0) eVelY = stuckDirY * spd;
+                }
+
+                if (validatePos(ex + eVelX, ey)) { ex += eVelX; mX = true; }
+                if (validatePos(ex, ey + eVelY)) { ey += eVelY; mY = true; }
+
+                if (!mX && !mY && slideManeuver === 0) {
+                    slideManeuver = 30;
+                    stuckDirX = Math.random() < 0.5 ? 1 : -1;
+                    stuckDirY = Math.random() < 0.5 ? 1 : -1;
+                } else if (!mX && slideManeuver === 0) {
+                    slideManeuver = 20;
+                    stuckDirX = 0;
+                    stuckDirY = dy > 0 ? 1 : -1;
+                    if (Math.abs(dy) < 10) stuckDirY = Math.random() < 0.5 ? 1 : -1;
+                } else if (!mY && slideManeuver === 0) {
+                    slideManeuver = 20;
+                    stuckDirX = dx > 0 ? 1 : -1;
+                    stuckDirY = 0;
+                    if (Math.abs(dx) < 10) stuckDirX = Math.random() < 0.5 ? 1 : -1;
+                }
+            }
+
+            if (timeAlive > nextPwr && !pwrActive) {
+                pwrActive = true;
+                pwrX = Math.random() * (window.innerWidth - 100) + 50;
+                pwrY = Math.random() * (window.innerHeight - 100) + 50;
+                powerup.style.left = pwrX + 'px';
+                powerup.style.top = pwrY + 'px';
+                powerup.classList.remove('hidden');
+            }
+
+            if (timeAlive > nextTerrain) {
+                nextTerrain += Math.max(0.3, 3.0 - (timeAlive * 0.1));
+
+                let GRID = 50;
+                let tCols = Math.floor(window.innerWidth / GRID);
+                let tRows = Math.floor(window.innerHeight / GRID);
+                let col, row;
+
+                if (terrains.length > 0 && Math.random() < 0.7) {
+                    let base = terrains[Math.floor(Math.random() * terrains.length)];
+                    let neighbors = [
+                        { c: base.c + 1, r: base.r }, { c: base.c - 1, r: base.r },
+                        { c: base.c, r: base.r + 1 }, { c: base.c, r: base.r - 1 }
+                    ];
+                    let valid = neighbors.filter(n => n.c > 0 && n.c < tCols - 1 && n.r > 0 && n.r < tRows - 1 && !gridSet.has(n.c + ',' + n.r));
+                    if (valid.length > 0) {
+                        let pick = valid[Math.floor(Math.random() * valid.length)];
+                        col = pick.c; row = pick.r;
+                    }
+                }
+
+                if (col === undefined) {
+                    col = Math.floor(Math.random() * (tCols - 2)) + 1;
+                    row = Math.floor(Math.random() * (tRows - 2)) + 1;
+                }
+
+                if (!gridSet.has(col + ',' + row)) {
+                    let tx = col * GRID + (GRID / 2);
+                    let ty = row * GRID + (GRID / 2);
+
+                    if (Math.hypot(px - tx, py - ty) > 100 && Math.hypot(ex - tx, ey - ty) > 100) {
+                        gridSet.add(col + ',' + row);
+                        let tDiv = document.createElement('div');
+                        tDiv.className = 'cube terrain';
+                        tDiv.style.left = tx + 'px';
+                        tDiv.style.top = ty + 'px';
+                        document.getElementById('board').appendChild(tDiv);
+                        terrains.push({ x: tx, y: ty, c: col, r: row, el: tDiv });
+                    }
+                }
+            }
+
+            if (pwrActive) {
+                let pDist = Math.hypot(px - pwrX, py - pwrY);
+                if (pDist < 40) {
+                    pwrActive = false;
+                    powerup.classList.add('hidden');
+                    nextPwr = timeAlive + 8;
+                    pwrBoost = 2.5;
+                    setTimeout(() => { pwrBoost = 1; }, 2500);
+                }
+            }
+
+            player.style.left = px + 'px';
+            player.style.top = py + 'px';
+            enemy.style.left = ex + 'px';
+            enemy.style.top = ey + 'px';
+
+            let eDist = Math.hypot(px - ex, py - ey);
+            if (eDist < 36) {
+                endGame(timeAlive);
+                return;
+            }
+
+            reqId = requestAnimationFrame(loop);
+        }
+
+        function endGame(timeAlive) {
+            active = false;
+            cancelAnimationFrame(reqId);
+
+            player.classList.add('hidden');
+            enemy.classList.add('hidden');
+            powerup.classList.add('hidden');
+            liveTimer.classList.add('hidden');
+            overlay.classList.remove('hidden');
+
+            title.textContent = 'Game Over';
+            score.textContent = 'Survived: ' + timeAlive.toFixed(1) + 's';
+            startBtn.textContent = 'Retry';
+        }
+    </script>
+</body>
+
+</html>
