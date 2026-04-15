@@ -184,6 +184,8 @@
         let slideManeuver = 0;
         let stuckDirX = 0;
         let stuckDirY = 0;
+        let eDirX = 1;
+        let eDirY = 0;
 
         let timeOffset = 0;
         let keepKnowledge = false;
@@ -218,7 +220,7 @@
         }
 
         function validatePos(cx, cy) {
-            let limit = GRID * 0.92;
+            let limit = GRID * 0.78;
             for (let t of terrains) {
                 if (Math.abs(cx - t.x) < limit && Math.abs(cy - t.y) < limit) {
                     return false;
@@ -290,11 +292,19 @@
             }
 
             let dist = Math.hypot(dx, dy);
-            let spd = 3.5 + (timeAlive * 0.25);
+            let spd = Math.min(3.5 + (timeAlive * 0.18), 12);
 
             if (dist > 0) {
-                let eVelX = (dx / dist) * spd;
-                let eVelY = (dy / dist) * spd;
+                let wantX = dx / dist;
+                let wantY = dy / dist;
+                let turnRate = Math.min(0.015 + (timeAlive * 0.003), 0.08);
+                eDirX += (wantX - eDirX) * turnRate;
+                eDirY += (wantY - eDirY) * turnRate;
+                let dirLen = Math.hypot(eDirX, eDirY);
+                if (dirLen > 0) { eDirX /= dirLen; eDirY /= dirLen; }
+
+                let eVelX = eDirX * spd;
+                let eVelY = eDirY * spd;
                 let mX = false, mY = false;
 
                 if (slideManeuver > 0) {
