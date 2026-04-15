@@ -3,13 +3,14 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Cube Game</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --grid: 50px;
-            --cube: 36px;
-            --bg: 25px;
+            --grid: 36px;
+            --cube: 26px;
+            --bg: 18px;
         }
 
         body {
@@ -197,6 +198,25 @@
 
         let GRID = 50;
 
+        function wouldSeal(c, r) {
+            let dirs = [{ c: c + 1, r: r }, { c: c - 1, r: r }, { c: c, r: r + 1 }, { c: c, r: r - 1 }];
+            for (let d of dirs) {
+                if (gridSet.has(d.c + ',' + d.r)) continue;
+                let around = 0;
+                if (gridSet.has((d.c + 1) + ',' + d.r) || (d.c === c && d.r === r)) around++;
+                if (gridSet.has((d.c - 1) + ',' + d.r) || (d.c === c && d.r === r)) around++;
+                if (gridSet.has(d.c + ',' + (d.r + 1)) || (d.c === c && d.r === r)) around++;
+                if (gridSet.has(d.c + ',' + (d.r - 1)) || (d.c === c && d.r === r)) around++;
+                let wallCount = 0;
+                if (gridSet.has((d.c + 1) + ',' + d.r) || (d.c + 1 === c && d.r === r)) wallCount++;
+                if (gridSet.has((d.c - 1) + ',' + d.r) || (d.c - 1 === c && d.r === r)) wallCount++;
+                if (gridSet.has(d.c + ',' + (d.r + 1)) || (d.c === c && d.r + 1 === r)) wallCount++;
+                if (gridSet.has(d.c + ',' + (d.r - 1)) || (d.c === c && d.r - 1 === r)) wallCount++;
+                if (wallCount >= 3) return true;
+            }
+            return false;
+        }
+
         function validatePos(cx, cy) {
             let limit = GRID * 0.92;
             for (let t of terrains) {
@@ -208,7 +228,7 @@
         }
 
         function runGame() {
-            GRID = Math.max(30, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 15));
+            GRID = Math.max(24, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 20));
             document.documentElement.style.setProperty('--grid', GRID + 'px');
             document.documentElement.style.setProperty('--cube', (GRID * 0.72) + 'px');
             document.documentElement.style.setProperty('--bg', (GRID / 2) + 'px');
@@ -232,17 +252,15 @@
             nextPwr = 5;
             pwrBoost = 1;
 
-            if (!keepKnowledge) {
-                for (let t of terrains) {
-                    if (t.el && t.el.parentNode) {
-                        t.el.parentNode.removeChild(t.el);
-                    }
+            for (let t of terrains) {
+                if (t.el && t.el.parentNode) {
+                    t.el.parentNode.removeChild(t.el);
                 }
-                terrains = [];
-                gridSet.clear();
-                timeOffset = 0;
-                nextTerrain = 3;
             }
+            terrains = [];
+            gridSet.clear();
+            nextTerrain = 3;
+            if (!keepKnowledge) timeOffset = 0;
 
             tStart = Date.now();
             loop();
@@ -328,6 +346,7 @@
                         { c: base.c, r: base.r + 1 }, { c: base.c, r: base.r - 1 }
                     ];
                     let valid = neighbors.filter(n => n.c > 0 && n.c < tCols - 1 && n.r > 0 && n.r < tRows - 1 && !gridSet.has(n.c + ',' + n.r));
+                    valid = valid.filter(v => !wouldSeal(v.c, v.r));
                     if (valid.length > 0) {
                         for (let v of valid) {
                             let adj = 0;
@@ -350,6 +369,7 @@
                 if (col === undefined) {
                     col = Math.floor(Math.random() * (tCols - 2)) + 1;
                     row = Math.floor(Math.random() * (tRows - 2)) + 1;
+                    if (wouldSeal(col, row)) { col = undefined; }
                 }
 
                 if (!gridSet.has(col + ',' + row)) {
