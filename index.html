@@ -6,6 +6,12 @@
     <title>Cube Game</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --grid: 50px;
+            --cube: 36px;
+            --bg: 25px;
+        }
+
         body {
             margin: 0;
             overflow: hidden;
@@ -21,13 +27,13 @@
             background-image:
                 linear-gradient(#e0e0e0 1px, transparent 1px),
                 linear-gradient(90deg, #e0e0e0 1px, transparent 1px);
-            background-size: 25px 25px;
+            background-size: var(--bg) var(--bg);
         }
 
         .cube {
             position: absolute;
-            width: 36px;
-            height: 36px;
+            width: var(--cube);
+            height: var(--cube);
             transform: translate(-50%, -50%);
             border: 3px solid #111;
             border-radius: 6px;
@@ -120,8 +126,8 @@
             background-color: #555;
             border-radius: 0;
             z-index: 6;
-            width: 50px;
-            height: 50px;
+            width: var(--grid);
+            height: var(--grid);
             box-sizing: border-box;
         }
     </style>
@@ -139,6 +145,7 @@
             <h1 id="title">Cube Run</h1>
             <p id="score"></p>
             <button id="startBtn">Start</button>
+            <button id="keepBtn" class="hidden" style="margin-left: 10px;">Keep Knowledge</button>
         </div>
     </div>
 
@@ -149,6 +156,7 @@
         const liveTimer = document.getElementById('liveTimer');
         const overlay = document.getElementById('overlay');
         const startBtn = document.getElementById('startBtn');
+        const keepBtn = document.getElementById('keepBtn');
         const title = document.getElementById('title');
         const score = document.getElementById('score');
 
@@ -176,16 +184,23 @@
         let stuckDirX = 0;
         let stuckDirY = 0;
 
+        let timeOffset = 0;
+        let keepKnowledge = false;
+
         document.addEventListener('mousemove', e => {
             mx = e.clientX;
             my = e.clientY;
         });
 
-        startBtn.addEventListener('click', runGame);
+        startBtn.addEventListener('click', () => { keepKnowledge = false; runGame(); });
+        keepBtn.addEventListener('click', () => { keepKnowledge = true; runGame(); });
+
+        let GRID = 50;
 
         function validatePos(cx, cy) {
+            let limit = GRID * 0.92;
             for (let t of terrains) {
-                if (Math.abs(cx - t.x) < 46 && Math.abs(cy - t.y) < 46) {
+                if (Math.abs(cx - t.x) < limit && Math.abs(cy - t.y) < limit) {
                     return false;
                 }
             }
@@ -193,6 +208,11 @@
         }
 
         function runGame() {
+            GRID = Math.max(30, Math.floor(Math.min(window.innerWidth, window.innerHeight) / 15));
+            document.documentElement.style.setProperty('--grid', GRID + 'px');
+            document.documentElement.style.setProperty('--cube', (GRID * 0.72) + 'px');
+            document.documentElement.style.setProperty('--bg', (GRID / 2) + 'px');
+
             active = true;
             overlay.classList.add('hidden');
             player.classList.remove('hidden');
@@ -212,14 +232,17 @@
             nextPwr = 5;
             pwrBoost = 1;
 
-            for (let t of terrains) {
-                if (t.el && t.el.parentNode) {
-                    t.el.parentNode.removeChild(t.el);
+            if (!keepKnowledge) {
+                for (let t of terrains) {
+                    if (t.el && t.el.parentNode) {
+                        t.el.parentNode.removeChild(t.el);
+                    }
                 }
+                terrains = [];
+                gridSet.clear();
+                timeOffset = 0;
+                nextTerrain = 3;
             }
-            terrains = [];
-            gridSet.clear();
-            nextTerrain = 3;
 
             tStart = Date.now();
             loop();
@@ -228,7 +251,7 @@
         function loop() {
             if (!active) return;
 
-            let timeAlive = (Date.now() - tStart) / 1000;
+            let timeAlive = ((Date.now() - tStart) / 1000) + timeOffset;
             liveTimer.textContent = timeAlive.toFixed(1) + 's';
 
             let pVelX = (mx - px) * (0.12 * pwrBoost);
@@ -294,12 +317,11 @@
             if (timeAlive > nextTerrain) {
                 nextTerrain += Math.max(0.3, 3.0 - (timeAlive * 0.1));
 
-                let GRID = 50;
                 let tCols = Math.floor(window.innerWidth / GRID);
                 let tRows = Math.floor(window.innerHeight / GRID);
                 let col, row;
 
-                if (terrains.length > 0 && Math.random() < 0.7) {
+                if (terrains.length > 0 && Math.random() < 0.85) {
                     let base = terrains[Math.floor(Math.random() * terrains.length)];
                     let neighbors = [
                         { c: base.c + 1, r: base.r }, { c: base.c - 1, r: base.r },
@@ -307,7 +329,20 @@
                     ];
                     let valid = neighbors.filter(n => n.c > 0 && n.c < tCols - 1 && n.r > 0 && n.r < tRows - 1 && !gridSet.has(n.c + ',' + n.r));
                     if (valid.length > 0) {
-                        let pick = valid[Math.floor(Math.random() * valid.length)];
+                        for (let v of valid) {
+                            let adj = 0;
+                            if (gridSet.has((v.c + 1) + ',' + v.r)) adj++;
+                            if (gridSet.has((v.c - 1) + ',' + v.r)) adj++;
+                            if (gridSet.has(v.c + ',' + (v.r + 1))) adj++;
+                            if (gridSet.has(v.c + ',' + (v.r - 1))) adj++;
+                            v.adj = adj;
+                        }
+
+                        let pref = valid.filter(v => v.adj === 1);
+                        let fallback = valid.filter(v => v.adj > 1);
+
+                        let pool = (pref.length > 0 && Math.random() < 0.9) ? pref : (fallback.length > 0 ? fallback : valid);
+                        let pick = pool[Math.floor(Math.random() * pool.length)];
                         col = pick.c; row = pick.r;
                     }
                 }
@@ -321,7 +356,7 @@
                     let tx = col * GRID + (GRID / 2);
                     let ty = row * GRID + (GRID / 2);
 
-                    if (Math.hypot(px - tx, py - ty) > 100 && Math.hypot(ex - tx, ey - ty) > 100) {
+                    if (Math.hypot(px - tx, py - ty) > (GRID * 2) && Math.hypot(ex - tx, ey - ty) > (GRID * 2)) {
                         gridSet.add(col + ',' + row);
                         let tDiv = document.createElement('div');
                         tDiv.className = 'cube terrain';
@@ -335,7 +370,7 @@
 
             if (pwrActive) {
                 let pDist = Math.hypot(px - pwrX, py - pwrY);
-                if (pDist < 40) {
+                if (pDist < (GRID * 0.8)) {
                     pwrActive = false;
                     powerup.classList.add('hidden');
                     nextPwr = timeAlive + 8;
@@ -350,7 +385,7 @@
             enemy.style.top = ey + 'px';
 
             let eDist = Math.hypot(px - ex, py - ey);
-            if (eDist < 36) {
+            if (eDist < (GRID * 0.72)) {
                 endGame(timeAlive);
                 return;
             }
@@ -368,9 +403,12 @@
             liveTimer.classList.add('hidden');
             overlay.classList.remove('hidden');
 
+            timeOffset = timeAlive;
+
             title.textContent = 'Game Over';
             score.textContent = 'Survived: ' + timeAlive.toFixed(1) + 's';
-            startBtn.textContent = 'Retry';
+            startBtn.textContent = 'Standard Retry';
+            keepBtn.classList.remove('hidden');
         }
     </script>
 </body>
